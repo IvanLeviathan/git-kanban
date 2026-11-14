@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 type Repository = { owner: string; name: string; html_url: string };
 type BoardData = { repository: Repository; stages: StageLabel[]; issues: GitHubIssue[] };
 type BoardColumn = { id: string; title: string; stageLabel: string | null; color: string | null; kind: "stage" | "unstaged" | "conflict" };
+type FilterOption = { value: string; label: string };
 const lastProjectStorageKey = "git-kanban:last-project";
 
 function readLastProjectId(): string {
@@ -29,6 +30,25 @@ function dateLabel(value: string): string {
   return Number.isNaN(date.getTime()) ? "" : new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "short" }).format(date);
 }
 
+function issuePriority(issue: GitHubIssue): number {
+  const priority = issue.labels.find((label) => label.name.toLowerCase().startsWith("priority:"))?.name.toLowerCase().slice("priority:".length);
+  return priority === "high" ? 0 : priority === "medium" ? 1 : priority === "low" ? 2 : 3;
+}
+
+function MultiSelectFilter({ label, options, selected, onChange }: { label: string; options: FilterOption[]; selected: string[]; onChange: (values: string[]) => void }) {
+  return <details className="relative min-w-36">
+    <summary className="flex h-9 cursor-pointer list-none items-center justify-between gap-3 rounded-md border border-input bg-background px-2 text-sm text-foreground">
+      <span>{label}</span><span className="text-xs text-muted-foreground">{selected.length ? `Выбрано: ${selected.length}` : "Все"}</span>
+    </summary>
+    <div className="absolute left-0 top-full z-30 mt-1 max-h-64 min-w-full overflow-y-auto rounded-md border border-border bg-popover p-2 text-popover-foreground shadow-lg">
+      {options.map((option) => <label key={option.value} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted">
+        <input type="checkbox" className="size-4 accent-primary" checked={selected.includes(option.value)} onChange={(event) => onChange(event.target.checked ? [...selected, option.value] : selected.filter((value) => value !== option.value))}/>
+        <span>{option.label}</span>
+      </label>)}
+    </div>
+  </details>;
+}
+
 function KanbanPage() {
   const rpc = useRpc<typeof rpcContract>();
   const sdk = useSdk();
@@ -44,6 +64,13 @@ function KanbanPage() {
   const [issueTitle, setIssueTitle] = useState("");
   const [issueBody, setIssueBody] = useState("");
   const [issueStageLabel, setIssueStageLabel] = useState("");
+  const [issuePriorityLabel, setIssuePriorityLabel] = useState("");
+  const [filterSearch, setFilterSearch] = useState("");
+  const [filterPriority, setFilterPriority] = useState<string[]>([]);
+  const [filterStage, setFilterStage] = useState<string[]>([]);
+  const [filterState, setFilterState] = useState<string[]>([]);
+  const [filterCreatedAfter, setFilterCreatedAfter] = useState("");
+  const [filterCreatedBefore, setFilterCreatedBefore] = useState("");
   const [commentBody, setCommentBody] = useState("");
   const [loading, setLoading] = useState(false);
   const [pending, setPending] = useState(false);
@@ -80,7 +107,6 @@ function KanbanPage() {
       setBoard(result);
       return result;
     } catch (cause) {
-      setBoard(null);
       setError(cause instanceof Error ? cause.message : "Не удалось загрузить GitHub Issues.");
       return null;
     } finally {
@@ -187,6 +213,28 @@ function KanbanPage() {
     ];
   }, [board]);
 
+  const filteredIssues = useMemo(() => {
+    const query = filterSearch.trim().toLocaleLowerCase();
+    const start = filterCreatedAfter ? new Date(`${filterCreatedAfter}T00:00:00`).getTime() : null;
+    const end = filterCreatedBefore ? new Date(`${filterCreatedBefore}T00:00:00`).getTime() + 24 * 60 * 60 * 1000 : null;
+    return (board?.issues ?? []).filter((issue) => {
+      if (query && !`${issue.number} ${issue.title} ${issue.body ?? ""}`.toLocaleLowerCase().includes(query)) return false;
+      const priority = issuePriority(issue);
+      const priorityValue = priority === 0 ? "high" : priority === 1 ? "medium" : priority === 2 ? "low" : "none";
+      if (filterPriority.length > 0 && !filterPriority.includes(priorityValue)) return false;
+      if (filterState.length > 0 && !filterState.includes(issue.state)) return false;
+      const stageValue = issue.stageState === "stage" ? issue.stageLabels[0] : issue.stageState;
+      if (filterStage.length > 0 && !filterStage.includes(stageValue)) return false;
+      const createdAt = Date.parse(issue.created_at);
+      if (start !== null && createdAt < start) return false;
+      if (end !== null && createdAt >= end) return false;
+      return true;
+    });
+  }, [board, filterSearch, filterPriority, filterStage, filterState, filterCreatedAfter, filterCreatedBefore]);
+
+  const visibleColumns = filterStage.length === 0 ? columns : columns.filter((column) => filterStage.includes(column.id));
+  const filtersActive = Boolean(filterSearch || filterPriority.length || filterStage.length || filterState.length || filterCreatedAfter || filterCreatedBefore);
+
   const updateStage = async (issue: GitHubIssue, stageLabel: string | null) => {
     if (!projectId || pending) return;
     setPending(true);
@@ -224,12 +272,14 @@ function KanbanPage() {
         title: issueTitle.trim(),
         body: issueBody,
         stageLabel: issueStageLabel || null,
+        priorityLabel: issuePriorityLabel || null,
       });
       await load();
       setCreateOpen(false);
       setIssueTitle("");
       setIssueBody("");
       setIssueStageLabel("");
+      setIssuePriorityLabel("");
       setSelectedIssue(created);
       setNotice(`Issue #${created.number} создан в GitHub.`);
     } catch (cause) {
@@ -305,7 +355,7 @@ function KanbanPage() {
   };
 
   return <div className="h-full min-h-0 flex-1 overflow-auto bg-background text-foreground">
-    <div className="mx-auto max-w-7xl p-5">
+    <div className="w-full p-5">
       <header className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold">Git Kanban</h1>
@@ -332,25 +382,35 @@ function KanbanPage() {
       </div>}
 
       {!projectId && <div className="card card-border rounded-xl border border-border bg-card p-6 text-center text-sm text-muted-foreground">Выберите BB-проект с GitHub remote.</div>}
-      {projectId && loading && <div role="status" className="flex items-center gap-2 py-8 text-sm text-muted-foreground"><span className="loading loading-spinner loading-sm inline-block size-4 animate-spin rounded-full border-2 border-current border-r-transparent"/>Загружаю Issues из GitHub…</div>}
-      {projectId && !loading && board && board.stages.length === 0 && <div className="alert alert-warning mb-4 rounded-lg border border-warning/20 bg-warning/5 text-sm text-warning">В репозитории нет stage-labels. Добавьте labels вида <code>stage:10:Backlog</code> на GitHub.</div>}
+      {projectId && loading && !board && <div role="status" className="flex items-center gap-2 py-8 text-sm text-muted-foreground"><span className="loading loading-spinner loading-sm inline-block size-4 animate-spin rounded-full border-2 border-current border-r-transparent"/>Загружаю Issues из GitHub…</div>}
+      {projectId && board && board.stages.length === 0 && <div className="alert alert-warning mb-4 rounded-lg border border-warning/20 bg-warning/5 text-sm text-warning">В репозитории нет stage-labels. Добавьте labels вида <code>stage:10:Backlog</code> на GitHub.</div>}
 
-      {projectId && !loading && board && <>
+      {projectId && board && <>
         {board.issues.length === 0 && <div className="card card-border mb-4 rounded-xl border border-border bg-card p-5 text-sm text-muted-foreground">В репозитории нет Issues.</div>}
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-          {columns.map((column) => {
+        <div className="mb-4 flex flex-wrap items-end gap-3 rounded-xl border border-border bg-card p-3">
+          <label className="min-w-48 flex-1 space-y-1 text-xs font-medium text-muted-foreground">Поиск<Input type="search" value={filterSearch} onChange={(event) => setFilterSearch(event.target.value)} placeholder="Заголовок, описание или номер" className="h-9 w-full"/></label>
+          <div className="space-y-1 text-xs font-medium text-muted-foreground">Стадия<MultiSelectFilter label="Любая стадия" options={columns.map((column) => ({ value: column.id, label: column.title }))} selected={filterStage} onChange={setFilterStage}/></div>
+          <div className="space-y-1 text-xs font-medium text-muted-foreground">Приоритет<MultiSelectFilter label="Любой приоритет" options={[{ value: "high", label: "Высокий" }, { value: "medium", label: "Средний" }, { value: "low", label: "Низкий" }, { value: "none", label: "Без приоритета" }]} selected={filterPriority} onChange={setFilterPriority}/></div>
+          <div className="space-y-1 text-xs font-medium text-muted-foreground">Статус<MultiSelectFilter label="Любой статус" options={[{ value: "open", label: "Открытые" }, { value: "closed", label: "Закрытые" }]} selected={filterState} onChange={setFilterState}/></div>
+          <label className="min-w-36 space-y-1 text-xs font-medium text-muted-foreground">Создано с<input aria-label="Создано с даты" type="date" className="input h-9 w-full rounded-md border border-input bg-background px-2 text-sm text-foreground" value={filterCreatedAfter} max={filterCreatedBefore || undefined} onChange={(event) => setFilterCreatedAfter(event.target.value)}/></label>
+          <label className="min-w-36 space-y-1 text-xs font-medium text-muted-foreground">Создано по<input aria-label="Создано по дату" type="date" className="input h-9 w-full rounded-md border border-input bg-background px-2 text-sm text-foreground" value={filterCreatedBefore} min={filterCreatedAfter || undefined} onChange={(event) => setFilterCreatedBefore(event.target.value)}/></label>
+          <span className="pb-2 text-xs text-muted-foreground">Найдено: {filteredIssues.length}</span>
+          {filtersActive && <Button type="button" variant="ghost" size="sm" className="btn btn-ghost h-9" onClick={() => { setFilterSearch(""); setFilterPriority([]); setFilterStage([]); setFilterState([]); setFilterCreatedAfter(""); setFilterCreatedBefore(""); }}>Сбросить</Button>}
+        </div>
+        <div className="flex min-w-0 items-start gap-4 overflow-x-auto pb-2">
+          {visibleColumns.map((column) => {
             const columnColor = safeLabelColor(column.color ?? "");
-            const issues = board.issues.filter((issue) => {
+            const issues = filteredIssues.filter((issue) => {
               if (column.kind === "unstaged") return issue.stageState === "unstaged";
               if (column.kind === "conflict") return issue.stageState === "conflict";
               return issue.stageState === "stage" && issue.stageLabels[0] === column.stageLabel;
-            });
-            return <section key={column.id} aria-label={column.title} className="min-h-60 rounded-xl border border-border/70 bg-muted/30 p-3" style={columnColor ? { backgroundColor: `${columnColor}1a` } : undefined} onDragOver={(event) => { if (column.kind !== "conflict") event.preventDefault(); }} onDrop={(event) => dropIssue(event, column)}>
+            }).sort((a, b) => issuePriority(a) - issuePriority(b) || Date.parse(a.created_at) - Date.parse(b.created_at) || a.number - b.number);
+            return <section key={column.id} aria-label={column.title} className="flex h-[calc(100vh-14rem)] min-h-60 w-72 shrink-0 flex-col rounded-xl border border-border/70 bg-muted/30 p-3" style={columnColor ? { backgroundColor: `${columnColor}1a` } : undefined} onDragOver={(event) => { if (column.kind !== "conflict") event.preventDefault(); }} onDrop={(event) => dropIssue(event, column)}>
               <h2 className="mb-3 flex items-center justify-between gap-2 rounded-md px-2 py-1 text-sm font-semibold" style={columnColor ? { backgroundColor: `${columnColor}30`, borderLeft: `3px solid ${columnColor}` } : undefined}>
                 <span className="truncate">{column.title}</span>
               <span className="badge badge-ghost badge-sm inline-flex shrink-0 items-center justify-center rounded-full border border-border bg-muted px-2 py-0.5 text-xs text-muted-foreground">{issues.length}</span>
               </h2>
-              <div className="space-y-2">
+              <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
                 {issues.map((issue) => <article key={issue.number} draggable onDragStart={(event) => { event.dataTransfer.setData("text/github-issue", String(issue.number)); event.dataTransfer.effectAllowed = "move"; }} className={`card card-border group flex cursor-grab flex-col rounded-xl border border-border bg-card shadow-sm transition-shadow hover:shadow-md active:cursor-grabbing ${issue.state === "closed" ? "opacity-80" : ""}`} style={columnColor ? { borderTop: `3px solid ${columnColor}` } : undefined}>
                   <div className="card-body flex flex-col gap-2 p-3.5">
                     <div className="flex items-start justify-between gap-2"><button type="button" className="block min-w-0 flex-1 break-words text-left text-sm font-semibold leading-snug hover:underline" onClick={() => setSelectedIssue(issue)} aria-haspopup="dialog">#{issue.number} {issue.title}</button>{issue.state === "closed" && <span className="badge badge-warning badge-sm inline-flex shrink-0 items-center rounded-full border border-warning/20 bg-warning/5 px-2 py-0.5 text-[11px] text-warning">Закрыт</span>}</div>
@@ -434,6 +494,7 @@ function KanbanPage() {
           <label className="block space-y-1 text-sm font-medium">Заголовок<Input required maxLength={256} value={issueTitle} onChange={(event) => setIssueTitle(event.target.value)} autoFocus/></label>
           <label className="block space-y-1 text-sm font-medium">Описание<textarea maxLength={65_536} rows={6} value={issueBody} onChange={(event) => setIssueBody(event.target.value)} className="textarea min-h-32 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"/></label>
           <label className="block space-y-1 text-sm font-medium">Стадия<select className="select h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground" value={issueStageLabel} onChange={(event) => setIssueStageLabel(event.target.value)}><option value="">Без стадии</option>{board?.stages.map((stage) => <option key={stage.name} value={stage.name}>{stage.title}</option>)}</select></label>
+          <label className="block space-y-1 text-sm font-medium">Приоритет<select className="select h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground" value={issuePriorityLabel} onChange={(event) => setIssuePriorityLabel(event.target.value)}><option value="">Без приоритета</option><option value="priority:high">Высокий</option><option value="priority:medium">Средний</option><option value="priority:low">Низкий</option></select></label>
           <div className="flex flex-wrap justify-end gap-2"><Button type="button" variant="outline" className="btn btn-outline" disabled={pending} onClick={() => setCreateOpen(false)}>Отмена</Button><Button type="submit" className="btn" disabled={pending || !issueTitle.trim()}>{pending ? "Создание…" : "Создать Issue"}</Button></div>
         </form>
       </DialogContent>

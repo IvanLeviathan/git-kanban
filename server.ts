@@ -52,7 +52,7 @@ export const rpcContract = defineRpcContract({
     output: commentSchema,
   },
   issue_create: {
-    input: z.object({ projectId: projectIdSchema, title: z.string().trim().min(1).max(256), body: z.string().max(65_536), stageLabel: stageLabelSchema }),
+    input: z.object({ projectId: projectIdSchema, title: z.string().trim().min(1).max(256), body: z.string().max(65_536), stageLabel: stageLabelSchema, priorityLabel: z.enum(["priority:high", "priority:medium", "priority:low"]).nullable() }),
     output: issueSchema,
   },
   issue_thread_link_get: {
@@ -151,9 +151,9 @@ export function createPlugin(github: GithubApi = createGithubApi()) {
       const repository = await repositoryForProject(bb, projectId);
       return github.addComment(repository, issueNumber, body);
     }),
-    issue_create: async ({ projectId, title, body, stageLabel }) => run(async () => {
+    issue_create: async ({ projectId, title, body, stageLabel, priorityLabel }) => run(async () => {
       const repository = await repositoryForProject(bb, projectId);
-      return github.createIssue(repository, { title, body, stageLabel });
+      return github.createIssue(repository, { title, body, stageLabel, priorityLabel });
     }),
     issue_thread_link_get: async ({ projectId, issueNumber }) => run(async () => {
       const repository = await repositoryForProject(bb, projectId);

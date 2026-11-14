@@ -53,7 +53,7 @@ export interface GithubApi {
   listIssues(repository: GithubRepository): Promise<GitHubIssue[]>;
   getIssue(repository: GithubRepository, issueNumber: number): Promise<GitHubIssue>;
   listComments(repository: GithubRepository, issueNumber: number): Promise<GitHubComment[]>;
-  createIssue(repository: GithubRepository, input: { title: string; body: string; stageLabel?: string | null }): Promise<GitHubIssue>;
+  createIssue(repository: GithubRepository, input: { title: string; body: string; stageLabel?: string | null; priorityLabel?: string | null }): Promise<GitHubIssue>;
   addComment(repository: GithubRepository, issueNumber: number, body: string): Promise<GitHubComment>;
   moveIssueStage(repository: GithubRepository, issueNumber: number, targetStageLabel: string | null): Promise<GitHubIssue>;
 }
@@ -266,10 +266,20 @@ export function createGithubApi(run: GithubApiRunner = productionRunner): Github
       const title = validateIssueTitle(input.title);
       if (input.body.length > 65_536) throw new Error("Issue description must be at most 65536 characters.");
       if (input.stageLabel) await requireStageLabel(repository, input.stageLabel);
+      if (input.priorityLabel) {
+        if (!["priority:high", "priority:medium", "priority:low"].includes(input.priorityLabel)) {
+          throw new Error("Priority label is invalid.");
+        }
+        const labels = await readLabels(repository);
+        if (!labels.some((label) => label.name === input.priorityLabel)) {
+          throw new Error("Priority label is not configured on this repository.");
+        }
+      }
 
       const args = ["--method", "POST", `${repositoryPath(repository)}/issues`, "--raw-field", `title=${title}`];
       if (input.body.length > 0) args.push("--raw-field", `body=${input.body}`);
       if (input.stageLabel) args.push("--raw-field", `labels[]=${input.stageLabel}`);
+      if (input.priorityLabel) args.push("--raw-field", `labels[]=${input.priorityLabel}`);
 
       const result = await request<unknown>(args);
       return addStageInfo(issueCreateResultSchema.parse(result));
