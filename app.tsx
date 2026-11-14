@@ -432,7 +432,7 @@ function KanbanPage() {
     </div>
 
     <Dialog open={issueForDialog !== null} onOpenChange={(open) => { if (!open) { setSelectedIssue(null); setCommentBody(""); } }}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+      <DialogContent className="grid h-[90vh] max-h-[90vh] w-[calc(100vw-2rem)] grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden sm:max-w-5xl">
         {issueForDialog && <>
           <DialogHeader>
             <DialogTitle>#{issueForDialog.number} {issueForDialog.title}</DialogTitle>
@@ -448,41 +448,45 @@ function KanbanPage() {
               </select>
             </label>
           </div>
-          <section className="space-y-2 rounded-lg border border-border bg-muted/20 p-3">
-            <h3 className="text-sm font-semibold">BB-тред</h3>
-            {linkedThreadId ? <div className="flex flex-wrap items-center gap-2">
-              <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">{linkedThread?.displayTitle ?? linkedThreadId}</span>
-              <Button type="button" size="sm" className="btn btn-sm" onClick={() => navigate.toThread(linkedThreadId)}>Открыть тред</Button>
-              <Button type="button" size="sm" variant="outline" className="btn btn-outline btn-sm" disabled={pending} onClick={() => void linkThread(issueForDialog, null)}>Отвязать</Button>
-            </div> : <div className="flex flex-wrap items-center gap-2">
-              <Button type="button" size="sm" variant="outline" className="btn btn-outline btn-sm" disabled={pending} onClick={() => void createThreadForIssue(issueForDialog)}>Создать новый тред</Button>
-              {projectThreads.length > 0 && <select aria-label={`Привязать BB-тред к Issue ${issueForDialog.number}`} className="select h-9 min-w-48 flex-1 rounded-md border border-input bg-background px-2 text-sm text-foreground" defaultValue="" onChange={(event) => { if (event.target.value) linkThread(issueForDialog, event.target.value); }}>
-                <option value="">Выбрать существующий тред…</option>
-                {projectThreads.map((thread) => <option key={thread.id} value={thread.id}>{thread.displayTitle}</option>)}
-              </select>}
-              {projectThreads.length === 0 && <span className="text-xs text-muted-foreground">В проекте пока нет тредов.</span>}
-            </div>}
-            <p className="text-xs text-muted-foreground">Связь хранится только в этом браузере и не отправляется в GitHub.</p>
-          </section>
-          {issueForDialog.body && <p className="whitespace-pre-wrap rounded-lg border border-border bg-muted/30 p-3 text-sm leading-relaxed" style={{ overflowWrap: "anywhere" }}>{issueForDialog.body}</p>}
-          {issueForDialog.stageState === "conflict" && <div role="alert" className="alert alert-warning rounded-lg border border-warning/20 bg-warning/5 text-sm text-warning">У Issue несколько stage-label. Выберите одну стадию, чтобы исправить конфликт.</div>}
-          <section className="border-t border-border pt-4">
-            <h3 className="mb-3 text-sm font-semibold">Комментарии ({comments.length})</h3>
-            {commentsError && <p role="alert" className="mb-3 text-sm text-error">{commentsError}</p>}
-            {commentsLoading && <p role="status" className="text-sm text-muted-foreground">Загружаю комментарии…</p>}
-            <div className="space-y-3">
-              {comments.map((comment) => <article key={comment.id} className="card card-border rounded-lg border border-border bg-muted/30 p-3">
-                <div className="mb-2 flex items-center justify-between gap-2 text-xs text-muted-foreground"><span className="truncate">{comment.user?.login ? `@${comment.user.login}` : "GitHub"}</span><time>{dateLabel(comment.created_at)}</time></div>
-                <p className="whitespace-pre-wrap text-sm" style={{ overflowWrap: "anywhere" }}>{comment.body}</p>
-              </article>)}
-              {!commentsLoading && comments.length === 0 && !commentsError && <p className="text-sm text-muted-foreground">Комментариев пока нет.</p>}
+          <div className="grid min-h-0 grid-cols-1 gap-4 overflow-y-auto md:grid-cols-[minmax(0,1fr)_minmax(20rem,0.9fr)] md:overflow-hidden">
+            <div className="space-y-4 md:min-h-0 md:overflow-y-auto md:pr-1">
+              <section className="space-y-2 rounded-lg border border-border bg-muted/20 p-3">
+                <h3 className="text-sm font-semibold">BB-тред</h3>
+                {linkedThreadId ? <div className="flex flex-wrap items-center gap-2">
+                  <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">{linkedThread?.displayTitle ?? linkedThreadId}</span>
+                  <Button type="button" size="sm" className="btn btn-sm" onClick={() => navigate.toThread(linkedThreadId)}>Открыть тред</Button>
+                  <Button type="button" size="sm" variant="outline" className="btn btn-outline btn-sm" disabled={pending} onClick={() => void linkThread(issueForDialog, null)}>Отвязать</Button>
+                </div> : <div className="flex flex-wrap items-center gap-2">
+                  <Button type="button" size="sm" variant="outline" className="btn btn-outline btn-sm" disabled={pending} onClick={() => void createThreadForIssue(issueForDialog)}>Создать новый тред</Button>
+                  {projectThreads.length > 0 && <select aria-label={`Привязать BB-тред к Issue ${issueForDialog.number}`} className="select h-9 min-w-48 flex-1 rounded-md border border-input bg-background px-2 text-sm text-foreground" defaultValue="" onChange={(event) => { if (event.target.value) linkThread(issueForDialog, event.target.value); }}>
+                    <option value="">Выбрать существующий тред…</option>
+                    {projectThreads.map((thread) => <option key={thread.id} value={thread.id}>{thread.displayTitle}</option>)}
+                  </select>}
+                  {projectThreads.length === 0 && <span className="text-xs text-muted-foreground">В проекте пока нет тредов.</span>}
+                </div>}
+                <p className="text-xs text-muted-foreground">Связь хранится только в этом браузере и не отправляется в GitHub.</p>
+              </section>
+              {issueForDialog.body && <p className="whitespace-pre-wrap rounded-lg border border-border bg-muted/30 p-3 text-sm leading-relaxed" style={{ overflowWrap: "anywhere" }}>{issueForDialog.body}</p>}
+              {issueForDialog.stageState === "conflict" && <div role="alert" className="alert alert-warning rounded-lg border border-warning/20 bg-warning/5 text-sm text-warning">У Issue несколько stage-label. Выберите одну стадию, чтобы исправить конфликт.</div>}
             </div>
-            <form onSubmit={addComment} className="mt-4 space-y-2">
-              <label className="block text-sm font-medium" htmlFor="github-issue-comment">Новый комментарий</label>
-              <textarea id="github-issue-comment" required maxLength={65_536} rows={3} value={commentBody} onChange={(event) => setCommentBody(event.target.value)} className="textarea min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground" placeholder="Написать комментарий…"/>
-              <Button type="submit" className="btn" disabled={pending || !commentBody.trim()}>{pending ? "Отправка…" : "Добавить комментарий"}</Button>
-            </form>
-          </section>
+            <section className="flex min-h-[20rem] flex-col border-t border-border pt-4 md:min-h-0 md:border-l md:border-t-0 md:pl-4 md:pt-0">
+              <h3 className="mb-3 shrink-0 text-sm font-semibold">Комментарии ({comments.length})</h3>
+              {commentsError && <p role="alert" className="mb-3 shrink-0 text-sm text-error">{commentsError}</p>}
+              {commentsLoading && <p role="status" className="shrink-0 text-sm text-muted-foreground">Загружаю комментарии…</p>}
+              <div className="min-h-0 max-h-[45vh] flex-1 space-y-3 overflow-y-auto pr-1 md:max-h-none">
+                {comments.map((comment) => <article key={comment.id} className="card card-border rounded-lg border border-border bg-muted/30 p-3">
+                  <div className="mb-2 flex items-center justify-between gap-2 text-xs text-muted-foreground"><span className="truncate">{comment.user?.login ? `@${comment.user.login}` : "GitHub"}</span><time>{dateLabel(comment.created_at)}</time></div>
+                  <p className="whitespace-pre-wrap text-sm" style={{ overflowWrap: "anywhere" }}>{comment.body}</p>
+                </article>)}
+                {!commentsLoading && comments.length === 0 && !commentsError && <p className="text-sm text-muted-foreground">Комментариев пока нет.</p>}
+              </div>
+              <form onSubmit={addComment} className="mt-4 shrink-0 space-y-2">
+                <label className="block text-sm font-medium" htmlFor="github-issue-comment">Новый комментарий</label>
+                <textarea id="github-issue-comment" required maxLength={65_536} rows={3} value={commentBody} onChange={(event) => setCommentBody(event.target.value)} className="textarea min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground" placeholder="Написать комментарий…"/>
+                <Button type="submit" className="btn" disabled={pending || !commentBody.trim()}>{pending ? "Отправка…" : "Добавить комментарий"}</Button>
+              </form>
+            </section>
+          </div>
         </>}
       </DialogContent>
     </Dialog>
