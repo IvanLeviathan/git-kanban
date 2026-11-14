@@ -18,6 +18,7 @@ Git Kanban is a BB plugin that turns GitHub Issues into a Kanban board. It conne
 - GitHub CLI (`gh`) installed and authenticated with permission to read and update Issues in that repository.
 
 The plugin uses the user's existing `gh` authentication. It does not ask for or store a separate GitHub token.
+For BB projects with a local path source, the plugin can read the GitHub remote from the source's `origin` when BB's project metadata has no remote URL.
 
 ## Issue stages
 

@@ -1,3 +1,4 @@
+import { execFile } from "node:child_process";
 import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { createGithubApi, parseGithubRepository, sortStageLabels } from "./lib/github-api.ts";
@@ -87,6 +88,14 @@ function errorMessage(cause: unknown): string {
   return "Не удалось выполнить запрос к GitHub. Проверьте сеть, авторизацию и права доступа.";
 }
 
+function readLocalGitRemote(path: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    execFile("git", ["-C", path, "remote", "get-url", "origin"], { timeout: 5_000 }, (error, stdout) => {
+      resolve(error ? null : stdout.trim() || null);
+    });
+  });
+}
+
 function toRepository(remote: string | null): { owner: string; name: string; html_url: string } {
   const repository = parseGithubRepository(remote);
   return { ...repository, html_url: `https://github.com/${repository.owner}/${repository.name}` };
@@ -94,7 +103,17 @@ function toRepository(remote: string | null): { owner: string; name: string; htm
 
 async function repositoryForProject(bb: BbPluginApi, projectId: string) {
   const project = await bb.sdk.projects.get({ projectId });
-  return toRepository(project.gitRemoteUrl);
+  let remote = project.gitRemoteUrl;
+  if (!remote) {
+    const sources = [...project.sources]
+      .filter((source) => source.type === "local_path")
+      .sort((a, b) => Number(b.isDefault) - Number(a.isDefault));
+    for (const source of sources) {
+      remote = await readLocalGitRemote(source.path);
+      if (remote) break;
+    }
+  }
+  return toRepository(remote);
 }
 
 function threadLinkStorageKey(repository: { owner: string; name: string }, issueNumber: number): string {
