@@ -167,6 +167,9 @@ export function createPlugin(github: GithubApi = createGithubApi()) {
       else await bb.storage.kv.delete(key);
       return { threadId };
     }),
+  }, {
+    experimental_discoverable: true,
+    experimental_description: "GitHub Issues kanban board and stage management for BB projects.",
   });
   };
 }
